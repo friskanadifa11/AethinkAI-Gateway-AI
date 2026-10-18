@@ -1,0 +1,13 @@
+# Keep the build context small and the image free of local state.
+.git
+.env
+node_modules
+**/node_modules
+**/dist
+**/.vite
+scripts/__pycache__
+**/__pycache__
+*.log
+docs
+design-reference
+.github

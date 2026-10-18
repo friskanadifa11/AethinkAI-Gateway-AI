@@ -1,0 +1,70 @@
+# AethinkAI Gateway AI — single-node stack.
+# Published ports are bound to the loopback interface only. Exposing this on a
+# LAN or the public internet requires a TLS reverse proxy (see docs/RUNBOOK.md).
+name: aethinkai-gateway
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: aethink
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: aethink
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aethink -d aethink"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    # Not published: only the gateway needs to reach it.
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    # Redis holds rate-limit counters and nothing authoritative, so it runs
+    # without persistence: a restart only resets the current minute's budget.
+
+  gateway-api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      HTTP_ADDR: 0.0.0.0:8080
+      # The container must bind every interface; the host mapping below is what
+      # keeps it loopback-only.
+      ALLOW_PUBLIC_BIND: "true"
+      APP_ENV: ${APP_ENV:-development}
+      DATABASE_URL: postgres://aethink:${POSTGRES_PASSWORD}@postgres:5432/aethink?sslmode=disable
+      REDIS_ADDR: redis:6379
+      APP_SECRET: ${APP_SECRET:?set APP_SECRET in .env}
+      BOOTSTRAP_TOKEN: ${BOOTSTRAP_TOKEN:?set BOOTSTRAP_TOKEN in .env}
+      SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-72}
+      INSECURE_COOKIES: ${INSECURE_COOKIES:-true}
+      ALLOW_PRIVATE_UPSTREAMS: ${ALLOW_PRIVATE_UPSTREAMS:-true}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      WEB_DIST: /app/web
+    ports:
+      - "127.0.0.1:${GATEWAY_PORT:-8787}:8080"
+    healthcheck:
+      test: ["CMD", "/app/gateway", "-healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+volumes:
+  pgdata:

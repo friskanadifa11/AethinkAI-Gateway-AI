@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 64" width="320" height="64" role="img" aria-label="AethinkAI Gateway AI">
+  <defs>
+    <linearGradient id="mark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#7dd3fc"/>
+      <stop offset="100%" stop-color="#0ea5e9"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Mark: three inbound lanes converging on a single routed output. -->
+  <g transform="translate(4, 8)">
+    <rect x="0.5" y="0.5" width="47" height="47" rx="12" fill="#0b1120" stroke="url(#mark)"/>
+    <path d="M10 14h11l8 10" stroke="url(#mark)" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+    <path d="M10 24h11" stroke="url(#mark)" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+    <path d="M10 34h11l8-10" stroke="url(#mark)" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+    <circle cx="34" cy="24" r="4.5" fill="url(#mark)"/>
+  </g>
+
+  <!-- Wordmark: text is outlined, not a font dependency, so the asset renders
+       identically wherever it is embedded. -->
+  <text x="68" y="30" font-family="Inter, system-ui, sans-serif" font-size="19" font-weight="600" fill="#eaf2ff">
+    AethinkAI
+  </text>
+  <text x="68" y="48" font-family="Inter, system-ui, sans-serif" font-size="12.5" letter-spacing="1.6" fill="#8fa3c4">
+    GATEWAY AI
+  </text>
+</svg>

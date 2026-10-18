@@ -1,0 +1,80 @@
+@import "./design/tokens.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* The base layer is already handled by tokens.css, so Tailwind's own reset is
+   kept minimal here on purpose. */
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+}
+
+@layer components {
+  /* Panel: the workhorse surface. One definition, used everywhere, so no page
+     drifts from the others. */
+  .panel {
+    background: var(--surface-canvas);
+    border: 1px solid var(--surface-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--box-shadow-panel, none);
+  }
+
+  .panel-raised {
+    background: var(--surface-raised);
+    border: 1px solid var(--surface-border);
+    border-radius: var(--radius);
+  }
+
+  /* Monospaced identifiers: trace ids, prefixes, aliases. Tabular so columns
+     line up when scanned vertically. */
+  .ident {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+    color: var(--text-body);
+  }
+
+  .muted {
+    color: var(--text-muted);
+  }
+
+  .faint {
+    color: var(--text-faint);
+  }
+
+  /* The signal bar: a 2px rail that marks the active route or row. */
+  .signal-bar {
+    position: relative;
+  }
+
+  .signal-bar::before {
+    content: "";
+    position: absolute;
+    inset-block: 6px;
+    inset-inline-start: 0;
+    width: 2px;
+    border-radius: 2px;
+    background: linear-gradient(180deg, var(--signal), var(--signal-strong));
+    opacity: 0.9;
+  }
+
+  .skip-link {
+    position: absolute;
+    inset-inline-start: var(--space-4);
+    inset-block-start: -48px;
+    z-index: 50;
+    background: var(--surface-raised);
+    border: 1px solid var(--surface-border-strong);
+    border-radius: var(--radius-sm);
+    padding: var(--space-2) var(--space-3);
+    transition: inset-block-start var(--dur) var(--ease);
+  }
+
+  .skip-link:focus {
+    inset-block-start: var(--space-3);
+  }
+}

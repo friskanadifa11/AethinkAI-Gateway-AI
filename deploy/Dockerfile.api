@@ -1,0 +1,37 @@
+# Build the console, compile the gateway, ship a minimal runtime image.
+#
+#   stage 1  web    node:22-alpine  -> apps/web/dist
+#   stage 2  build  golang:1.24-alpine -> static gateway binary
+#   stage 3  run    alpine -> gateway + compiled console
+
+# ---------------------------------------------------------------- web bundle
+FROM node:22-alpine AS web
+WORKDIR /web
+# Install with the lockfile first so a source-only change reuses this layer.
+COPY apps/web/package.json apps/web/package-lock.json* ./
+RUN npm ci --no-audit --no-fund || npm install --no-audit --no-fund
+COPY apps/web/ ./
+RUN npm run build
+
+# ------------------------------------------------------------------ go build
+FROM golang:1.24-alpine AS build
+WORKDIR /src
+COPY apps/api/go.mod apps/api/go.sum ./
+RUN go mod download
+COPY apps/api/ ./
+# Trimpath keeps the binary reproducible; the module cache is not copied on.
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/gateway ./cmd/api
+
+# ------------------------------------------------------------------- runtime
+FROM alpine:3.20
+RUN apk add --no-cache ca-certificates tzdata wget && adduser -D -u 10001 gateway
+WORKDIR /app
+COPY --from=build /out/gateway /app/gateway
+COPY --from=web /web/dist /app/web
+USER gateway
+ENV WEB_DIST=/app/web
+EXPOSE 8080
+# The binary is its own health probe client so the image needs no curl.
+HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=6 \
+  CMD ["/app/gateway", "-healthcheck"]
+ENTRYPOINT ["/app/gateway"]

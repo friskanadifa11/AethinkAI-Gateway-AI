@@ -1,0 +1,121 @@
+/* Design tokens — the single source of truth for the console's look.
+ *
+ * Layering rules that keep this maintainable:
+ *   1. Tokens live on :root as CSS custom properties. Nothing hardcodes a hex.
+ *   2. Tailwind maps those tokens (tailwind.config.js) for utility use.
+ *   3. Base element styling uses :where() so it carries zero specificity and a
+ *      component utility always wins without !important.
+ */
+
+:root {
+  /* Surfaces, darkest first. The rail sits below the canvas so depth reads
+     without a shadow. */
+  --surface-void: #070b16;
+  --surface-rail: #0b1120;
+  --surface-canvas: #0f172c;
+  --surface-raised: #131c33;
+  --surface-hover: #1c2942;
+  --surface-border: rgba(148, 180, 226, 0.14);
+  --surface-border-strong: rgba(148, 180, 226, 0.28);
+
+  /* Text ramp. --text-faint is reserved for metadata, never for body copy. */
+  --text-strong: #eaf2ff;
+  --text-body: #c3d2ea;
+  --text-muted: #8fa3c4;
+  --text-faint: #5b7793;
+
+  /* One accent, used only where something is live or actionable. */
+  --signal: #38bdf8;
+  --signal-strong: #0ea5e9;
+  --signal-dim: rgba(56, 189, 248, 0.14);
+  --signal-ring: rgba(56, 189, 248, 0.4);
+
+  --ok: #34d399;
+  --ok-dim: rgba(52, 211, 153, 0.14);
+  --warn: #fbbf24;
+  --warn-dim: rgba(251, 191, 36, 0.14);
+  --bad: #f87171;
+  --bad-dim: rgba(248, 113, 113, 0.14);
+
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 14px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  --rail-width: 248px;
+  --topbar-height: 56px;
+
+  /* Motion is opt-out friendly: the reduced variant collapses every duration. */
+  --dur-fast: 120ms;
+  --dur: 200ms;
+  --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
+
+  color-scheme: dark;
+}
+
+/* The operator preference wins over the OS default, and the OS default wins
+   over our baseline. Both paths land on the same near-zero durations. */
+[data-motion="reduced"],
+:root:not([data-motion="full"]) {
+  /* nothing here — the query below is authoritative */
+}
+
+[data-motion="reduced"] {
+  --dur-fast: 1ms;
+  --dur: 1ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion="full"]) {
+    --dur-fast: 1ms;
+    --dur: 1ms;
+  }
+}
+
+/* Base layer: :where() keeps specificity at 0 so any utility overrides it. */
+:where(html) {
+  background: var(--surface-void);
+  color: var(--text-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+:where(body) {
+  margin: 0;
+  min-height: 100vh;
+  font-family: var(--font-sans, Inter, system-ui, sans-serif);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+:where(:focus-visible) {
+  outline: 2px solid var(--signal-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+:where(a) {
+  color: var(--signal);
+  text-decoration: none;
+}
+
+:where(a:hover) {
+  text-decoration: underline;
+}
+
+:where(::selection) {
+  background: var(--signal-dim);
+  color: var(--text-strong);
+}
+
+/* Scrollbars, so long tables do not break the dark surface. */
+:where(*) {
+  scrollbar-width: thin;
+  scrollbar-color: var(--surface-border-strong) transparent;
+}

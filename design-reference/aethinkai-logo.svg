@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none" role="img" aria-label="AethinkAI">
+  <title>AethinkAI</title>
+  <defs>
+    <linearGradient id="atk-bg3" x1="0" y1="0" x2="128" y2="128" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0B1E3A"/>
+      <stop offset="0.55" stop-color="#1D4ED8"/>
+      <stop offset="1" stop-color="#06B6D4"/>
+    </linearGradient>
+    <linearGradient id="atk-a3" x1="38" y1="34" x2="90" y2="90" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#CFFAFE"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#atk-bg3)"/>
+  <polygon points="64,14 107,39 107,89 64,114 21,89 21,39" stroke="white" stroke-opacity="0.28" stroke-width="3"/>
+  <path d="M38 90 L64 34 L90 90" stroke="url(#atk-a3)" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M49 66 H57 M71 66 H79" stroke="url(#atk-a3)" stroke-width="10" stroke-linecap="round"/>
+  <circle cx="64" cy="66" r="10" fill="#06B6D4" stroke="white" stroke-width="5"/>
+  <circle cx="64" cy="66" r="2.5" fill="white"/>
+  <circle cx="38" cy="90" r="4" fill="white" fill-opacity="0.9"/>
+  <circle cx="90" cy="90" r="4" fill="white" fill-opacity="0.9"/>
+</svg>
