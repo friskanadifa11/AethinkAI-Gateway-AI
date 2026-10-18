@@ -21,7 +21,9 @@ export default defineConfig({
     },
   },
   test: {
-    environment: "node",
-    include: ["src/**/*.test.ts"],
+    // The console is DOM behaviour: focus handling, dialogs and forms are what
+    // break in practice, so the tests run against a real DOM.
+    environment: "jsdom",
+    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
   },
 });

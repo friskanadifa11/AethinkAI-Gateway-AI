@@ -316,20 +316,46 @@ export function Modal({
   const panelRef = useRef<HTMLDivElement>(null);
   const restoreTo = useRef<HTMLElement | null>(null);
 
+  // Callers build a fresh onClose on every render, so it cannot be a dependency
+  // of the effect below: the effect would tear down and re-run on each parent
+  // render, and that re-run is what dragged the caret out of the field the
+  // operator was typing in after every keystroke. The ref keeps Escape bound to
+  // the current handler without the effect ever re-running.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
   useEffect(() => {
     if (!open) return;
-    restoreTo.current = document.activeElement as HTMLElement | null;
+    // Remember the trigger once, on open. A later run must not overwrite it
+    // with whatever is focused now, or closing would return focus to the dialog.
+    if (restoreTo.current === null) {
+      restoreTo.current = document.activeElement as HTMLElement | null;
+    }
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") onCloseRef.current();
     };
     document.addEventListener("keydown", onKey);
-    // Move focus into the dialog so keyboard users are not left behind it.
-    panelRef.current?.querySelector<HTMLElement>("input,select,textarea,button")?.focus();
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      restoreTo.current?.focus();
-    };
-  }, [open, onClose]);
+
+    // Land the caret in the first field rather than on the close button:
+    // opening a form is an intent to fill it in. A dialog with no fields falls
+    // back to a button so it stays reachable by keyboard.
+    const panel = panelRef.current;
+    const field = panel?.querySelector<HTMLElement>("input:not([type=hidden]),select,textarea");
+    (field ?? panel?.querySelector<HTMLElement>("button"))?.focus();
+
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open]);
+
+  // Return focus only when the dialog actually closes, and only to a node that
+  // is still on the page.
+  useEffect(() => {
+    if (open) return;
+    const target = restoreTo.current;
+    restoreTo.current = null;
+    if (target && document.contains(target)) target.focus();
+  }, [open]);
 
   if (!open) return null;
   return (

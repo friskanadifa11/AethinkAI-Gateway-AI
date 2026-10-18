@@ -37,9 +37,10 @@ $ docker run --rm -v "$PWD/apps/web:/w" -w /w node:22-alpine sh -c \
     "npx tsc --noEmit && npx vitest run && npx vite build"
 tsc: no errors
 
- ✓ src/lib/format.test.ts (16 tests) 17ms
- Test Files  1 passed (1)
-      Tests  16 passed (16)
+ ✓ src/components/ui.modal.test.tsx (3 tests) 528ms
+ ✓ src/lib/format.test.ts (16 tests) 9ms
+ Test Files  2 passed (2)
+      Tests  19 passed (19)
 
 vite v5.4.21 building for production...
 ✓ 46 modules transformed.
@@ -51,7 +52,20 @@ dist/assets/index-Cyve3Uo5.js   215.06 kB │ gzip: 65.17 kB
 
 The console's unit tests cover the formatting helpers as behaviour contracts
 (compacting counts, switching to seconds above 1s, guarding division by zero,
-relative timestamps, never rendering a full key, and status-to-tone mapping).
+relative timestamps, never rendering a full key, and status-to-tone mapping),
+and the dialog focus trap.
+
+`ui.modal.test.tsx` is a regression test for a defect that made every form in
+the console unfillable. The dialog's focus effect listed `onClose` as a
+dependency, but callers build a fresh closure on every render, so each keystroke
+tore the effect down and re-ran it, and the re-run focused the dialog's first
+focusable element. Typing one character moved the caret onto a button. The test
+asserts where focus is after typing, not merely that the value changed: a
+controlled input passes a value-only check while still being unusable.
+
+Against the unfixed component the test fails with
+`expected <button …> to be <input …>`, which is the defect reproduced rather
+than described.
 
 ## 3. Production image
 
