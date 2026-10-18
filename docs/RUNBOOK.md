@@ -9,7 +9,7 @@ make smoke          # builds images, starts postgres + redis + gateway
 ```
 
 Open `http://127.0.0.1:8787/app/`. The console detects that no operator exists
-and shows the first-run form. Username, a password of at least 12 characters,
+and shows the first-run form. Username, a password of at least 8 characters,
 and the `BOOTSTRAP_TOKEN` value from `.env`.
 
 Once the operator exists the bootstrap endpoint closes permanently. If the token

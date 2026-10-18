@@ -187,6 +187,11 @@ func (s *Server) issueSession(w http.ResponseWriter, r *http.Request, user model
 }
 
 // validateOperatorInput returns an empty string when the input is acceptable.
+//
+// The password floor is 8 characters, matching the NIST SP 800-63B baseline for
+// memorised secrets. Length is the dominant factor, but a stricter arbitrary
+// number buys little: bcrypt cost 12 already makes offline guessing expensive,
+// and the operator can and should choose something longer.
 func validateOperatorInput(username, password string) string {
 	username = strings.TrimSpace(username)
 	switch {
@@ -194,8 +199,8 @@ func validateOperatorInput(username, password string) string {
 		return "Username must be between 3 and 64 characters."
 	case strings.ContainsAny(username, " \t\n/@:"):
 		return "Username must not contain spaces, slashes or colons."
-	case len(password) < 12:
-		return "Use a password of at least 12 characters."
+	case len(password) < 8:
+		return "Use a password of at least 8 characters."
 	case len(password) > 200:
 		return "Password is too long."
 	}

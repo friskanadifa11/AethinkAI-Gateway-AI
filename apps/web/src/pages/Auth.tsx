@@ -6,6 +6,7 @@
 
 import { useState } from "react";
 import { api, ApiError, type AdminUser, type SetupState } from "../lib/api";
+import { MIN_PASSWORD_LENGTH } from "../lib/policy";
 import { Button, Field, Input, Panel } from "../components/ui";
 import { Logo } from "../components/AppShell";
 
@@ -93,7 +94,11 @@ export function AuthScreen({
             <Field
               label="Password"
               htmlFor="auth-password"
-              hint={bootstrapping ? "At least 12 characters." : undefined}
+              hint={
+                bootstrapping
+                  ? `At least ${MIN_PASSWORD_LENGTH} characters.`
+                  : undefined
+              }
             >
               <Input
                 id="auth-password"

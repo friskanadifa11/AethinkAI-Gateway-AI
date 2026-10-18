@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError, type Settings as SettingsData } from "../lib/api";
 import { relative } from "../lib/format";
+import { MIN_PASSWORD_LENGTH } from "../lib/policy";
 import {
   Badge,
   Button,
@@ -168,7 +169,10 @@ export function SettingsPage({ username }: { username: string }) {
                     autoComplete="current-password"
                   />
                 </Field>
-                <Field label="New password" hint="At least 12 characters.">
+                <Field
+                  label="New password"
+                  hint={`At least ${MIN_PASSWORD_LENGTH} characters.`}
+                >
                   <Input
                     type="password"
                     value={next}
@@ -188,14 +192,15 @@ export function SettingsPage({ username }: { username: string }) {
                   <Button
                     variant="primary"
                     busy={changing}
-                    disabled={current === "" || next.length < 12}
+                    disabled={current === "" || next.length < MIN_PASSWORD_LENGTH}
                     onClick={() => void changePassword()}
                   >
                     Change password
                   </Button>
-                  {next.length > 0 && next.length < 12 && (
+                  {next.length > 0 && next.length < MIN_PASSWORD_LENGTH && (
                     <span className="text-[11px] text-[color:var(--warn)]">
-                      {12 - next.length} more character{12 - next.length === 1 ? "" : "s"} needed
+                      {MIN_PASSWORD_LENGTH - next.length} more character
+                      {MIN_PASSWORD_LENGTH - next.length === 1 ? "" : "s"} needed
                     </span>
                   )}
                 </div>
