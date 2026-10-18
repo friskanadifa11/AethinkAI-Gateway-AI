@@ -62,10 +62,10 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	startupCtx, cancelStartup := context.WithTimeout(ctx, 30*time.Second)
+	startupCtx, cancelStartup := context.WithTimeout(ctx, startupTimeout)
 	defer cancelStartup()
 
-	st, err := store.Open(startupCtx, cfg.DatabaseURL, cfg.RedisURL)
+	st, err := openStoreWithRetry(startupCtx, cfg, logger)
 	if err != nil {
 		return err
 	}
@@ -145,6 +145,45 @@ func housekeeping(ctx context.Context, st *store.Store, logger *slog.Logger) {
 			if err := st.PurgeExpiredSessions(ctx); err != nil {
 				logger.Warn("retention: session purge failed", "error", err)
 			}
+		}
+	}
+}
+
+// startupTimeout bounds how long the process waits for Postgres and Redis to
+// accept connections before giving up.
+const startupTimeout = 60 * time.Second
+
+// openStoreWithRetry waits for the dependencies instead of exiting on the first
+// refused connection.
+//
+// Every deployment shape starts the gateway at the same moment as its data
+// services - compose, a Kubernetes Deployment, and the end-to-end script all
+// launch the containers together - and a first-boot Postgres spends a second or
+// two finishing initdb. Treating that ordinary race as a fatal error turned a
+// slow start into a crash loop. The wait is bounded by ctx, and each failed
+// attempt says why, so a genuinely wrong DATABASE_URL is still obvious.
+func openStoreWithRetry(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*store.Store, error) {
+	delay := 250 * time.Millisecond
+	for attempt := 1; ; attempt++ {
+		st, err := store.Open(ctx, cfg.DatabaseURL, cfg.RedisURL)
+		if err == nil {
+			if attempt > 1 {
+				logger.Info("dependencies reachable", "attempts", attempt)
+			}
+			return st, nil
+		}
+
+		logger.Warn("waiting for postgres and redis",
+			"attempt", attempt, "retry_in", delay.String(), "error", err)
+
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("postgres and redis did not become reachable within %s: %w", startupTimeout, err)
+		case <-time.After(delay):
+		}
+
+		if delay < 2*time.Second {
+			delay *= 2
 		}
 	}
 }

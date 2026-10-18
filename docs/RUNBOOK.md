@@ -110,6 +110,7 @@ unreadable.
 | Sign-in loops back to the login form | The cookie is `Secure` but the site is plain HTTP. Set `INSECURE_COOKIES=true` for local work only. |
 | `make bootstrap` refuses to run | A `.env` already exists. That is intentional; move it aside if you really mean to regenerate. |
 | Requests appear but with 0 tokens | The provider does not report usage. The gateway records what the provider sends rather than estimating. |
+| Startup logs repeat `waiting for postgres and redis` | Normal when the gateway starts alongside its data services. It retries with backoff for up to 60s, then exits with the last error. Persisting past that means `DATABASE_URL` or `REDIS_ADDR` is wrong. |
 
 ## Logs and tracing
 

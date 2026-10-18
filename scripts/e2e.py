@@ -341,9 +341,20 @@ def main() -> int:
     print("• waiting for readiness", flush=True)
     ready = wait_for(f"{BASE}/readyz", timeout=180)
     if ready is None:
-        print(sh("docker", "logs", "--tail", "40", GW).stdout, file=sys.stderr)
-        print(sh("docker", "logs", "--tail", "20", PG).stdout, file=sys.stderr)
-        docker_rm(GW, MOCK, REDIS, PG)
+        # Say why, not just that it failed: a readiness timeout with no logs is
+        # the least useful failure this script can produce.
+        print("\n• the gateway never became ready; evidence follows", file=sys.stderr)
+        for name, tail in ((GW, 60), (PG, 20), (REDIS, 10)):
+            logs = sh("docker", "logs", "--tail", str(tail), name)
+            stream = ((logs.stdout or "") + (logs.stderr or "")).strip()
+            print(f"--- {name} ---\n{stream or '(no output)'}", file=sys.stderr)
+            state = sh("docker", "inspect", "-f",
+                       "status={{.State.Status}} exit={{.State.ExitCode}}", name)
+            print(f"({state.stdout.strip()})", file=sys.stderr)
+        if args.keep:
+            print(f"containers left running: {GW} {PG} {REDIS} {MOCK}", file=sys.stderr)
+        else:
+            docker_rm(GW, MOCK, REDIS, PG)
         return 1
 
     client = Client()

@@ -210,6 +210,36 @@ aside landmark: True
    390x844: overflow=0   (the compact rail scrolls inside its own container)
 ```
 
+### Dependency readiness, verified rather than assumed
+
+The gateway used to exit on the first refused connection, so a Postgres that was
+still running its first `initdb` killed the process. The end-to-end script caught
+this as a bare readiness timeout, which is what prompted the change.
+
+The fix (bounded retry with backoff) was verified by starting the gateway alone
+on a network with no Postgres and no Redis at all:
+
+```
+$ docker run -d --name aethink-demo-gw ... aethink-e2e:local
+$ sleep 7 && docker inspect -f '{{.State.Status}}' aethink-demo-gw
+running                      # not exited: it waits
+
+{"level":"WARN","msg":"waiting for postgres and redis","attempt":3,"retry_in":"1s",
+ "error":"ping postgres: ... hostname resolving error: lookup aethink-demo-pg ..."}
+... attempts 4, 5, 6, 7 ...
+
+$ docker run -d --name aethink-demo-pg ... postgres:16-alpine   # start it late
+$ curl -sS http://127.0.0.1:18788/readyz
+{"postgres":true,"redis":true,"status":"ready"}
+
+waiting for postgres and redis (x7) → dependencies reachable → migration applied
+→ gateway listening
+```
+
+A readiness failure in the end-to-end script now prints each container's logs and
+exit status instead of nothing, because a silent timeout was the reason this took
+longer to find than it should have.
+
 Honesty of the empty state, verified on an installation with no providers and no
 traffic: the Overview renders `No providers configured`, `No traffic in this
 window` and `No failures recorded`, and the metric tiles read zero. Nothing is
