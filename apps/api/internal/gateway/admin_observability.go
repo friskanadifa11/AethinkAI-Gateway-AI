@@ -49,6 +49,7 @@ func (s *Server) handleListRequests(w http.ResponseWriter, r *http.Request) {
 		Since:  parseSince(q.Get("since")),
 		Status: q.Get("status"),
 		Alias:  q.Get("alias"),
+		KeyID:  strings.TrimSpace(q.Get("key_id")),
 		Search: strings.TrimSpace(q.Get("q")),
 		Limit:  atoiDefault(q.Get("limit"), 50),
 		Offset: atoiDefault(q.Get("offset"), 0),

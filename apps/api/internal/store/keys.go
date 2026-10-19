@@ -164,3 +164,96 @@ func (s *Store) CountActiveKeys(ctx context.Context) (int, error) {
 		`select count(*) from client_keys where enabled and (expires_at is null or expires_at > now())`).Scan(&n)
 	return n, err
 }
+
+// KeyUpdate is the editable shape of a key. The secret is absent on purpose:
+// only its hash exists, so a key's value can never be changed in place - that
+// is what rotation is for.
+type KeyUpdate struct {
+	Label      string
+	OwnerLabel string
+	RPM        int
+	MaxConc    int
+	TokenQuota int64
+	Allowlist  []string
+	Enabled    bool
+	// ExpiresAt nil means "never"; the caller decides, because an expired key
+	// and a key with no expiry are different states.
+	ExpiresAt *time.Time
+}
+
+// UpdateClientKey rewrites the editable fields and returns the stored record.
+func (s *Store) UpdateClientKey(ctx context.Context, id string, in KeyUpdate) (models.ClientKey, error) {
+	if in.Allowlist == nil {
+		in.Allowlist = []string{}
+	}
+	tag, err := s.Pool.Exec(ctx, `
+		update client_keys set
+			label = $2, owner_label = $3, rpm = $4, max_concurrency = $5,
+			token_quota = $6, allowed_aliases = $7, enabled = $8, expires_at = $9,
+			revoked_at = case when $8 then null else revoked_at end
+		where id = $1`,
+		id, in.Label, in.OwnerLabel, in.RPM, in.MaxConc, in.TokenQuota,
+		in.Allowlist, in.Enabled, in.ExpiresAt)
+	if err != nil {
+		return models.ClientKey{}, err
+	}
+	if tag.RowsAffected() == 0 {
+		return models.ClientKey{}, ErrNotFound
+	}
+	return s.GetClientKey(ctx, id)
+}
+
+// AliasUsage is one row of a key's per-model rollup.
+type AliasUsage struct {
+	Alias    string `json:"alias"`
+	Requests int    `json:"requests"`
+	Tokens   int64  `json:"tokens"`
+}
+
+// KeyUsage is what one customer has done in a window. It is derived from the
+// request log rather than from counters on the key, so a key that predates the
+// current window still reports honestly.
+type KeyUsage struct {
+	Since     time.Time    `json:"since"`
+	Requests  int          `json:"requests"`
+	OK        int          `json:"ok"`
+	Errors    int          `json:"errors"`
+	TokensIn  int64        `json:"tokens_in"`
+	TokensOut int64        `json:"tokens_out"`
+	Aliases   []AliasUsage `json:"aliases"`
+}
+
+// KeyUsage rolls up one key's traffic since the given instant.
+func (s *Store) KeyUsage(ctx context.Context, keyID string, since time.Time) (KeyUsage, error) {
+	out := KeyUsage{Since: since, Aliases: []AliasUsage{}}
+	err := s.Pool.QueryRow(ctx, `
+		select count(*),
+		       count(*) filter (where status = 'ok'),
+		       count(*) filter (where status <> 'ok'),
+		       coalesce(sum(input_tokens), 0),
+		       coalesce(sum(output_tokens), 0)
+		from requests
+		where key_id = $1 and created_at >= $2`, keyID, since).
+		Scan(&out.Requests, &out.OK, &out.Errors, &out.TokensIn, &out.TokensOut)
+	if err != nil {
+		return out, err
+	}
+	rows, err := s.Pool.Query(ctx, `
+		select alias, count(*), coalesce(sum(input_tokens + output_tokens), 0)
+		from requests
+		where key_id = $1 and created_at >= $2
+		group by alias
+		order by count(*) desc, alias`, keyID, since)
+	if err != nil {
+		return out, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var a AliasUsage
+		if err := rows.Scan(&a.Alias, &a.Requests, &a.Tokens); err != nil {
+			return out, err
+		}
+		out.Aliases = append(out.Aliases, a)
+	}
+	return out, rows.Err()
+}

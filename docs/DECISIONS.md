@@ -37,15 +37,18 @@ pointless, so instead there is a rotate endpoint with a grace window: the
 operational need is a cutover without downtime, not the ability to read an old
 secret.
 
-## D4 — Redis counter, in-process concurrency
+## D4 — Both limit counters live in Redis
 
-**Decision.** RPM lives in Redis; the in-flight count lives in the process.
+**Decision.** The request window and the in-flight count are both Redis counters.
 
 **Why.** A restart must not reset a caller's per-minute budget, so that counter
-belongs in shared state. A concurrency count has no meaning across a network hop
-— an in-flight request belongs to one process — and Redis round-trips on the hot
-path would cost latency for no correctness gain. The honest consequence is
-recorded in SECURITY.md: with more than one replica, concurrency is per-replica.
+belongs in shared state. The in-flight count was originally per-process, on the
+argument that a request belongs to one process — true, but the *limit* belongs to
+the key, so behind three replicas a ceiling of four became twelve. The counter is
+a plain `INCR`/`DECR` with a five-minute TTL: the TTL is not the limit, it is the
+repair, so slots held by a replica that dies mid-request disappear instead of
+pinning the key at its ceiling forever. Release uses a detached context because
+the request that acquired the slot may already be cancelled.
 
 ## D5 — A single `openai-compatible` adapter
 
@@ -56,15 +59,18 @@ registry.
 it. A registry would be abstraction without a second implementation. The columns
 exist so a second adapter is a data change plus one function, not a redesign.
 
-## D6 — Fixed-window rate limiting
+## D6 — Sliding-window rate limiting
 
-**Decision.** A per-minute bucket keyed on `(key, minute)`.
+**Decision.** A sorted set of request timestamps per key, counted over the true
+last sixty seconds.
 
-**Why.** A sliding window needs either sorted sets or a token bucket, both of
-which cost more per request and are harder to explain. The fixed window permits a
-burst at a minute boundary — a caller can spend two minutes' budget in two
-adjacent windows — and that is an acceptable trade for a single-operator
-gateway where the limit exists to stop runaway loops, not to shape traffic.
+**Why.** The fixed `(key, minute)` bucket allowed twice the configured rate at a
+boundary: the whole budget in the last second of one minute, then the whole budget
+again in the first second of the next. That is not a theoretical edge — a retry
+storm lands exactly there. The sorted set costs one pipeline of four commands and
+is trimmed on every request, so it never grows past the budget itself. A refused
+request is removed from the window again, because it must not consume budget it
+never used.
 
 ## D7 — No charting or routing library in the console
 
@@ -107,3 +113,35 @@ and asserts failover, tracing and error classification against them.
 is non-deterministic. Mocks make the interesting paths (failover, retry, terminal
 4xx) deliberately reproducible, which is what the routing logic actually needs to
 be tested against.
+
+## D11 — A provider that keeps failing is taken out of rotation
+
+**Decision.** Three consecutive failed attempts open a per-provider circuit in
+Redis for thirty seconds. While open, the target is skipped with
+`circuit_open` instead of being attempted.
+
+**Why.** A dead primary stayed first in every route, so every caller paid its full
+timeout before reaching the healthy hop. A provider that is down is not
+information worth paying for on each request. Redis rather than memory, because
+the verdict is about the provider, not the process: one replica discovering the
+outage should spare the others. The failure counter survives the cooldown, so the
+first probe after it re-opens the breaker on a single failure rather than needing
+three more — that keeps recovery cheap for a provider that is genuinely still
+down. The state is surfaced on the provider list, because a silent skip is
+indistinguishable from a slow gateway when you are looking at a dashboard.
+
+## D12 — Keys are edited in place; the secret is not
+
+**Decision.** `PATCH /api/admin/keys/{id}` changes limits, expiry, aliases and
+the `enabled` flag. Omitted fields keep their stored value. The secret has no
+update path at all.
+
+**Why.** Rotating a key to fix a typo in its label invalidated a customer's
+credential for no reason. The secret is different: only its HMAC is stored, so
+there is nothing to edit — a new secret is a rotation, with its grace window and
+its own audit entry. Fields are pointers on the wire so `0` (unlimited) stays
+distinguishable from "not sent", and `allowed_aliases` is a console picker rather
+than a text box, because an unknown alias on a fail-closed allowlist produced a
+key that could reach nothing and reported nothing. Creation now rejects unknown
+aliases for the same reason.
+

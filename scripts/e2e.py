@@ -22,6 +22,7 @@ import os
 import pathlib
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -242,6 +243,28 @@ def journey(client: Client) -> None:
     check("the key list exposes only the prefix",
           all("token" not in k and k["prefix"] == key[:12] for k in listed["keys"]))
 
+    key_id = minted["key"]["id"]
+    status, _, body = client.call(f"/api/admin/keys/{key_id}?range=1h")
+    check("a key reports its own usage", status == 200 and "usage" in body and body["usage"]["requests"] == 0,
+          str(body)[:200])
+
+    status, _, body = client.call(f"/api/admin/keys/{key_id}", "PATCH", {"rpm": 42})
+    check("a key is edited in place instead of rotated",
+          status == 200 and body["key"]["rpm"] == 42 and body["key"]["prefix"] == key[:12],
+          str(body)[:200])
+
+    status, _, body = client.call(f"/api/admin/keys/{key_id}", "PATCH",
+                                  {"allowed_aliases": ["never-published"]})
+    check("an unpublished alias is refused when editing a key",
+          status == 400 and body["error"]["code"] == "unknown_alias", str(body))
+
+    status, _, body = client.call("/api/admin/keys", "POST", {
+        "label": "typo-key", "owner_label": "", "rpm": 0, "max_concurrency": 0,
+        "token_quota": 0, "expires_in_days": 0, "allowed_aliases": ["fast-chta"],
+    })
+    check("a mistyped alias is refused at creation rather than issuing a dead key",
+          status == 400 and body["error"]["code"] == "unknown_alias", str(body))
+
     # ------------------------------------------------------------- public API
     print("\n• public API", flush=True)
     public = Client()
@@ -262,6 +285,82 @@ def journey(client: Client) -> None:
                                    "stream": True}, headers=auth, raw=True)
     check("a streaming request returns SSE with a usage chunk",
           status == 200 and '"usage"' in body and "[DONE]" in body, body[:200])
+
+    # ---------------------------------------------------------------- limits
+    print("\n• limits", flush=True)
+    status, _, limited = client.call("/api/admin/keys", "POST", {
+        "label": "burst-key", "owner_label": "ci", "rpm": 2, "max_concurrency": 0,
+        "token_quota": 0, "expires_in_days": 0, "allowed_aliases": ["fast-chat"],
+    })
+    burst = {"Authorization": f"Bearer {limited['token']}"}
+    codes = []
+    for _ in range(3):
+        status, _, body = public.call(
+            "/v1/chat/completions", "POST",
+            {"model": "fast-chat", "messages": [{"role": "user", "content": "burst"}]},
+            headers=burst)
+        codes.append(status)
+    check("the per-minute window admits exactly its budget then refuses",
+          codes == [200, 200, 429], str(codes))
+
+    status, _, slow = client.call("/api/admin/routes", "POST", {
+        "alias": "slow-chat", "strategy": "priority", "targets": [
+            {"provider_id": primary["id"], "upstream_model": "reply-slow", "timeout_ms": 10000},
+        ],
+    })
+    client.call(f"/api/admin/routes/{slow['id']}/publish", "POST")
+    status, _, conc = client.call("/api/admin/keys", "POST", {
+        "label": "conc-key", "owner_label": "ci", "rpm": 0, "max_concurrency": 1,
+        "token_quota": 0, "expires_in_days": 0, "allowed_aliases": ["slow-chat"],
+    })
+    conc_auth = {"Authorization": f"Bearer {conc['token']}"}
+    outcomes: list[int] = []
+    lock = threading.Lock()
+
+    def fire() -> None:
+        # Each thread gets its own opener: urllib's is not safe to share.
+        worker = Client()
+        code, _, _ = worker.call(
+            "/v1/chat/completions", "POST",
+            {"model": "slow-chat", "messages": [{"role": "user", "content": "hold"}]},
+            headers=conc_auth)
+        with lock:
+            outcomes.append(code)
+
+    threads = [threading.Thread(target=fire) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    check("the concurrency ceiling is enforced, not just documented",
+          sorted(outcomes) == [200, 429], str(outcomes))
+
+    # ------------------------------------------------------- provider health
+    print("\n• provider health", flush=True)
+    # fast-chat's primary hop answers 500 every time. Three failures in a row
+    # should take it out of rotation, so a caller stops paying that timeout on
+    # every request.
+    for _ in range(2):
+        public.call("/v1/chat/completions", "POST",
+                    {"model": "fast-chat", "messages": [{"role": "user", "content": "burn"}]},
+                    headers=auth)
+    time.sleep(0.6)
+    status, _, fleet = client.call("/api/admin/providers")
+    failing_row = next(p for p in fleet["providers"] if p["name"] == "mock-failing")
+    check("a provider that keeps failing is shown as cooling down",
+          failing_row.get("health") == "open" and failing_row.get("cooldown_s", 0) > 0,
+          str(failing_row))
+
+    status, headers, body = public.call(
+        "/v1/chat/completions", "POST",
+        {"model": "fast-chat", "messages": [{"role": "user", "content": "after"}]},
+        headers=auth)
+    trace = headers.get("X-Aethink-Trace", "")
+    _, _, detail = client.call(f"/api/admin/requests/{trace}")
+    first = (detail.get("attempts") or [{}])[0]
+    check("the next request skips the open provider instead of paying its timeout",
+          status == 200 and first.get("status") == "skipped"
+          and first.get("error_code") == "circuit_open", str(detail)[:300])
 
     status, _, body = public.call("/v1/chat/completions", "POST",
                                   {"model": "fast-chat", "messages": []})
@@ -326,8 +425,10 @@ def journey(client: Client) -> None:
 
     status, _, body = public.call("/v1/models", headers=auth)
     ids_all = sorted(m["id"] for m in body["data"])
+    _, _, catalogue = client.call("/api/admin/routes")
+    published_now = sorted(r["alias"] for r in catalogue["published"])
     check("an unrestricted key still lists every published alias",
-          ids_all == ["fast-chat", "premium-chat"], str(ids_all))
+          ids_all == published_now and "fast-chat" in published_now, str(ids_all))
 
     # ------------------------------------------------------------ observability
     print("\n• observability", flush=True)

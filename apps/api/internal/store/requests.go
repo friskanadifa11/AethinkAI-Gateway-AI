@@ -69,6 +69,8 @@ type RequestFilter struct {
 	Since  time.Time
 	Status string
 	Alias  string
+	// KeyID narrows the log to one customer. Empty means every key.
+	KeyID  string
 	Search string
 	Limit  int
 	Offset int
@@ -91,6 +93,9 @@ func (s *Store) ListRequests(ctx context.Context, f RequestFilter) ([]models.Req
 	}
 	if f.Alias != "" {
 		add("alias = $%d", f.Alias)
+	}
+	if f.KeyID != "" {
+		add("key_id = $%d", f.KeyID)
 	}
 	if f.Search != "" {
 		args = append(args, f.Search)

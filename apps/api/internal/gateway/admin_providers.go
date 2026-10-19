@@ -31,6 +31,10 @@ func (s *Server) handleListProviders(w http.ResponseWriter, r *http.Request) {
 	// The console shows a host, not the full URL path, and never a credential.
 	for i := range list {
 		list[i].BaseURL = redactHost(list[i].BaseURL)
+		if open, remaining, _ := s.brk.State(r.Context(), list[i].ID); open {
+			list[i].Health = "open"
+			list[i].CooldownSecs = int(remaining.Seconds() + 0.5)
+		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"providers": list})
 }

@@ -25,6 +25,7 @@ type Server struct {
 	st  *store.Store
 	up  *Upstream
 	lim *Limiter
+	brk *Breaker
 	log *slog.Logger
 	mux *http.ServeMux
 }
@@ -36,6 +37,7 @@ func New(cfg *config.Config, st *store.Store, log *slog.Logger) *Server {
 		st:  st,
 		up:  NewUpstream(),
 		lim: NewLimiter(),
+		brk: NewBreaker(st.RDB),
 		log: log,
 		mux: http.NewServeMux(),
 	}
@@ -75,6 +77,8 @@ func (s *Server) routes() {
 	s.mux.Handle("DELETE /api/admin/routes/{id}", s.admin(s.handleDeleteRoute))
 	s.mux.Handle("GET /api/admin/keys", s.admin(s.handleListKeys))
 	s.mux.Handle("POST /api/admin/keys", s.admin(s.handleCreateKey))
+	s.mux.Handle("GET /api/admin/keys/{id}", s.admin(s.handleGetKey))
+	s.mux.Handle("PATCH /api/admin/keys/{id}", s.admin(s.handleUpdateKey))
 	s.mux.Handle("POST /api/admin/keys/{id}/revoke", s.admin(s.handleRevokeKey))
 	s.mux.Handle("POST /api/admin/keys/{id}/rotate", s.admin(s.handleRotateKey))
 	s.mux.Handle("GET /api/admin/requests", s.admin(s.handleListRequests))

@@ -21,6 +21,9 @@ export type Provider = {
   models: string[];
   created_at: string;
   updated_at: string;
+  /** Set by the API while the circuit breaker is skipping this provider. */
+  health?: "open";
+  cooldown_s?: number;
 };
 
 export type RouteTarget = {
@@ -42,6 +45,19 @@ export type Route = {
   targets: RouteTarget[];
   created_at: string;
   published_at?: string;
+};
+
+export type AliasUsage = { alias: string; requests: number; tokens: number };
+
+/** Per-key rollup for a window, derived from the stored request log. */
+export type KeyUsage = {
+  since: string;
+  requests: number;
+  ok: number;
+  errors: number;
+  tokens_in: number;
+  tokens_out: number;
+  aliases: AliasUsage[];
 };
 
 export type ClientKey = {
@@ -259,6 +275,14 @@ export const api = {
     ),
 
   revokeKey: (id: string) => request<void>(`/keys/${id}/revoke`, { method: "POST" }),
+
+  getKey: (id: string, range: string) =>
+    request<{ key: ClientKey; usage: KeyUsage; range: string }>(
+      `/keys/${id}?range=${encodeURIComponent(range)}`,
+    ),
+
+  updateKey: (id: string, patch: Record<string, unknown>) =>
+    request<{ key: ClientKey }>(`/keys/${id}`, { method: "PATCH", ...json(patch) }),
 
   listRequests: (query: Record<string, string | number>) => {
     const params = new URLSearchParams();

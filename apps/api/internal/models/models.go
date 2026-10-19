@@ -20,6 +20,10 @@ type Provider struct {
 	Models        []string   `json:"models"`
 	CreatedAt     time.Time  `json:"created_at"`
 	UpdatedAt     time.Time  `json:"updated_at"`
+	// Health is not a column: the list handler fills it from the runtime
+	// breaker so the console can show which providers are cooling down.
+	Health       string `json:"health,omitempty"`
+	CooldownSecs int    `json:"cooldown_s,omitempty"`
 }
 
 // Route is an alias plus one immutable version. Publishing flips

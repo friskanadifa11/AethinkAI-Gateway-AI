@@ -196,7 +196,14 @@ export function ProvidersPage() {
                   )}
                 </Cell>
                 <Cell>
-                  <Badge tone={tone(p.last_test_state)}>{p.last_test_state}</Badge>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <Badge tone={tone(p.last_test_state)}>{p.last_test_state}</Badge>
+                    {p.health === "open" && (
+                      <span title="Skipped by the circuit breaker after repeated failures">
+                        <Badge tone="bad">cooling {p.cooldown_s ?? 0}s</Badge>
+                      </span>
+                    )}
+                  </div>
                 </Cell>
                 <Cell mono>{p.models.length ? p.models.length : "—"}</Cell>
                 <Cell>

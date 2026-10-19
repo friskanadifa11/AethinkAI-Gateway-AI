@@ -15,7 +15,10 @@ matters, a test that exercises it.
 | Client-key auth: HMAC digest, constant-time compare, enabled/revoked/expired/quota checks | done | `public_auth.go` |
 | Priority routing with per-target retries and failover | done | `routing.go`, `public_dispatch.go` |
 | Failover refused after the first byte; interruption recorded | done | `public_dispatch.go` |
-| Per-key RPM (Redis) and concurrency (in-process) limits, fail-closed | done | `limits.go` |
+| Per-key sliding-window RPM and cross-replica concurrency limits, fail-closed | done | `limits.go` |
+| Per-provider circuit breaker: three failures open it for thirty seconds | done | `breaker.go`, `public_dispatch.go` |
+| Client-key lifecycle: create, edit limits/aliases/expiry, rotate with grace, revoke | done | `admin_keys.go`, `store/keys.go` |
+| Per-key usage rollup over a window, and `key_id` filtering on the request log | done | `store/keys.go`, `admin_observability.go` |
 | Request and attempt tracing with no prompt or completion content | done | `public_dispatch.go`, `store/requests.go` |
 | Provider credentials encrypted at rest (AES-256-GCM) | done | `internal/security/crypto.go` |
 | Versioned routes with an atomic single-published-version guarantee | done | `store/routes.go`, migration index |
@@ -69,14 +72,19 @@ Each of these is a real gap, not an oversight. They are recorded in
 - **TLS.** The gateway speaks HTTP. A reverse proxy terminates TLS.
 - **Credential re-wrap.** No way to rotate `APP_SECRET` without re-entering each
   provider credential.
-- **Cross-replica concurrency limits.** The in-flight counter is per process.
-  RPM is shared through Redis; concurrency is not.
 - **Adapters beyond `openai-compatible`.** The adapter and base URL are stored
   columns, so a second one is a data change plus one function.
-- **Sliding-window rate limiting.** Fixed per-minute bucket; a caller can spend
-  two windows' budget across a boundary.
 - **Configurable strategies beyond `priority`.** Sequential fallback only; no
   weighted or cheapest-first selection.
+- **CORS on `/v1`.** Browser clients are refused by the same-origin policy; the
+  public API is for servers today.
+- **Per-key IP allowlists.** Keys are not bound to a source address.
+- **Endpoints beyond chat completions.** `/v1/models` is served; embeddings,
+  images and audio are not.
+- **Metrics and alerting.** No Prometheus/OTLP export; the overview reads the
+  request table.
+- **Multiple operators.** One operator row: audit entries name the action, not a
+  distinct person.
 - **Off-host audit shipping.** Audit rows are append-only by convention, not by
   guarantee.
 - **Prompt or completion capture.** Absent by design, including for debugging.

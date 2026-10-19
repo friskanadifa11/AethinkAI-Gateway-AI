@@ -71,7 +71,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 
 	// Rate limit before touching the database resolver: the cheapest refusal
 	// happens first.
-	ok, _, err := s.lim.AllowRPM(r.Context(), s.st.RDB, key.ID, key.RPM, time.Now())
+	ok, _, err := s.lim.AllowRPM(r.Context(), s.st.RDB, key.ID, traceID, key.RPM, time.Now())
 	if err != nil {
 		openAIError(w, http.StatusServiceUnavailable, "limiter_unavailable",
 			"The rate limiter is unavailable, so the request was refused.", "api_error")
@@ -83,7 +83,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 			"This key has reached its per-minute request limit.", "rate_limit_error")
 		return
 	}
-	release, ok := s.lim.Acquire(key.ID, key.MaxConc)
+	release, ok := s.lim.Acquire(r.Context(), s.st.RDB, key.ID, key.MaxConc)
 	if !ok {
 		w.Header().Set("Retry-After", "5")
 		openAIError(w, http.StatusTooManyRequests, "concurrency_limited",

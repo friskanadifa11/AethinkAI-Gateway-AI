@@ -35,6 +35,13 @@ func (s *Server) dispatch(w http.ResponseWriter, r *http.Request, plan dispatchP
 			// The caller is gone; stop spending provider tokens.
 			break
 		}
+		// A provider that just failed three times running is skipped rather than
+		// costing this caller its full timeout before the same failover.
+		if !s.brk.Available(r.Context(), t.ProviderID) {
+			attempts = append(attempts, attemptRow(t, "skipped", 0, 0, "circuit_open"))
+			lastStatus, lastCode = http.StatusServiceUnavailable, "circuit_open"
+			continue
+		}
 		credential, err := s.credentialFor(r.Context(), t)
 		if err != nil {
 			attempts = append(attempts, attemptRow(t, "error", 0, 0, "credential_unavailable"))
@@ -77,6 +84,7 @@ func (s *Server) dispatch(w http.ResponseWriter, r *http.Request, plan dispatchP
 
 			if ok, _ := ClassifyStatus(resp.StatusCode); ok {
 				usedTarget = &t
+				s.noteHealth(true, t.ProviderID)
 				if plan.Stream {
 					ttft, tokensIn, tokensOut, streamErr := s.streamThrough(w, resp)
 					cancel()
@@ -130,6 +138,7 @@ func (s *Server) dispatch(w http.ResponseWriter, r *http.Request, plan dispatchP
 		}
 		if targetFailed {
 			fallbacks++
+			s.noteHealth(false, t.ProviderID)
 		}
 	}
 
@@ -147,11 +156,30 @@ func (s *Server) dispatch(w http.ResponseWriter, r *http.Request, plan dispatchP
 		status = http.StatusBadGateway
 	}
 	message := "Every provider target for " + plan.Alias + " failed."
-	if lastCode != "" && lastCode != "no_healthy_target" {
+	if lastCode == "circuit_open" {
+		message = "Every provider target for " + plan.Alias + " is cooling down after recent failures."
+	} else if lastCode != "" && lastCode != "no_healthy_target" {
 		message = "Every provider target for " + plan.Alias + " failed (" + lastCode + ")."
 	}
 	s.finish(plan, attempts, "error", status, fallbacks, 0, 0, nil, lastCode, plan.Stream, ResolvedTarget{})
 	openAIError(w, status, lastCode, message, "api_error")
+}
+
+// noteHealth records an attempt outcome off the request path: a caller that hung
+// up still leaves the provider's state accurate for the next one.
+func (s *Server) noteHealth(ok bool, providerID string) {
+	if s.brk == nil {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if ok {
+			s.brk.Succeed(ctx, providerID)
+			return
+		}
+		s.brk.Fail(ctx, providerID)
+	}()
 }
 
 // credentialFor decrypts a target's provider credential.

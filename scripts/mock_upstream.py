@@ -72,6 +72,10 @@ class Handler(BaseHTTPRequestHandler):
         if payload.get("stream"):
             self._stream(payload)
         else:
+            # A model named *-slow holds the connection open, which is what lets
+            # the concurrency ceiling be tested for real instead of assumed.
+            if str(payload.get("model", "")).endswith("-slow"):
+                time.sleep(1.5)
             self._json(
                 200,
                 {

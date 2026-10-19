@@ -115,13 +115,32 @@ upstreams (healthy on 9091, always-500 on 9092, always-401 on 9093):
 • client keys
   [PASS] a key is issued exactly once
   [PASS] the key list exposes only the prefix
+  [PASS] a key reports its own usage
+  [PASS] a key is edited in place instead of rotated
+  [PASS] an unpublished alias is refused when editing a key
+  [PASS] a mistyped alias is refused at creation rather than issuing a dead key
 • public API
   [PASS] /v1/models lists the published alias
   [PASS] a request succeeds through fallback
   [PASS] a streaming request returns SSE with a usage chunk
+• limits
+  [PASS] the per-minute window admits exactly its budget then refuses
+  [PASS] the concurrency ceiling is enforced, not just documented
+• provider health
+  [PASS] a provider that keeps failing is shown as cooling down
+  [PASS] the next request skips the open provider instead of paying its timeout
   [PASS] a missing key is rejected
   [PASS] an unknown key is rejected
   [PASS] an unknown alias answers model_not_found
+• per-key model scoping
+  [PASS] a second alias is created
+  [PASS] the second alias is published
+  [PASS] a key can be limited to one alias
+  [PASS] a limited key only lists its own alias
+  [PASS] a limited key can call its own alias
+  [PASS] a limited key cannot call another alias
+  [PASS] a forbidden alias is indistinguishable from a missing one
+  [PASS] an unrestricted key still lists every published alias
 • observability
   [PASS] the request log contains the calls just made
   [PASS] the successful call recorded a fallback
@@ -137,13 +156,24 @@ upstreams (healthy on 9091, always-500 on 9092, always-401 on 9093):
   [PASS] sign-out succeeds
   [PASS] the session no longer works
 
-44/44 checks passed
+52/52 checks passed
 end-to-end run OK
 ```
 
-The two checks that matter most for the routing claim: a request whose primary
-target returns 500 still answers `200` from the fallback, and the recorded trace
-contains **two attempts in order** — `upstream_error` then success.
+The checks that carry the routing and tenancy claims:
+
+- A request whose primary target answers 500 still answers `200` from the
+  fallback, and its trace holds **two attempts in order** — `upstream_error`,
+  then success.
+- The same failing provider, after three failures, is listed as `health: "open"`
+  with a cooldown, and the next request's trace records `skipped` /
+  `circuit_open` instead of paying that failure again.
+- A key budgeted at two requests per minute gets `200, 200, 429` — and a key
+  capped at one in-flight request gets exactly one `200` and one `429` out of two
+  simultaneous calls.
+- A key issued for one alias sees only that alias in `/v1/models`, and calling
+  another one answers `404 model_not_found` — indistinguishable from an alias
+  that does not exist.
 
 ## 5. Compose stack
 

@@ -108,7 +108,7 @@ Unauthenticated endpoints are `GET /api/admin/setup-state`,
 | `GET` | `/api/admin/me` | Current operator. |
 | `POST` | `/api/admin/password` | Requires the current password; signs out other sessions. |
 | `GET` | `/api/admin/overview` | `?range=1h\|24h\|7d\|30d`. |
-| `GET` `POST` | `/api/admin/providers` | List / create. |
+| `GET` `POST` | `/api/admin/providers` | List / create. A listed provider carries `health: "open"` and `cooldown_s` while the circuit breaker is skipping it. |
 | `PATCH` `DELETE` | `/api/admin/providers/{id}` | Update / remove. An empty `api_key` keeps the stored credential. |
 | `POST` | `/api/admin/providers/{id}/test` | Bounded check. Calls `/models`, never a completion: testing costs nothing. |
 | `GET` `POST` | `/api/admin/routes` | List versions / create a draft. |
@@ -116,6 +116,8 @@ Unauthenticated endpoints are `GET /api/admin/setup-state`,
 | `POST` | `/api/admin/routes/{id}/dry-run` | Computes the attempt order from stored state. No provider is contacted. |
 | `DELETE` | `/api/admin/routes/{id}` | Refuses to delete the live version. |
 | `GET` `POST` | `/api/admin/keys` | List / create. Create returns the plaintext key once. |
+| `GET` | `/api/admin/keys/{id}` | One key plus its usage rollup (`?range=1h\|24h\|7d\|30d`). |
+| `PATCH` | `/api/admin/keys/{id}` | Partial update of label, owner, limits, expiry, aliases, `enabled`. Omitted fields keep their value; an unknown alias is refused with `unknown_alias`. The secret cannot be changed — that is what rotate is for. |
 | `POST` | `/api/admin/keys/{id}/rotate` | Issues a replacement and expires the old one after a grace window. |
 | `POST` | `/api/admin/keys/{id}/revoke` | Immediate. |
 | `GET` | `/api/admin/requests` | `since`, `status`, `alias`, `q`, `limit` (max 200), `offset`. |
