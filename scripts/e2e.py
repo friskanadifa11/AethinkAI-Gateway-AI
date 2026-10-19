@@ -277,12 +277,65 @@ def journey(client: Client) -> None:
     check("an unknown alias answers model_not_found",
           status == 404 and body["error"]["code"] == "model_not_found", str(body))
 
+    # -------------------------------------------------- per-key model scoping
+    # A customer key must reach only the aliases it was issued for. This is the
+    # whole point of issuing one key per customer, so it is checked as behaviour
+    # rather than trusted because the column exists.
+    print("\n• per-key model scoping", flush=True)
+    status, _, scoped = client.call("/api/admin/routes", "POST", {
+        "alias": "premium-chat", "strategy": "priority", "targets": [
+            {"provider_id": primary["id"], "upstream_model": "mock-model-premium",
+             "timeout_ms": 5000, "retries": 0},
+        ],
+    })
+    check("a second alias is created", status == 201, str(scoped)[:200])
+    status, _, body = client.call(f"/api/admin/routes/{scoped['id']}/publish", "POST")
+    check("the second alias is published", status == 200 and body.get("published") is True,
+          str(body)[:200])
+
+    status, _, restricted = client.call("/api/admin/keys", "POST", {
+        "label": "customer-a", "owner_label": "customer-a", "rpm": 0, "max_concurrency": 0,
+        "token_quota": 0, "expires_in_days": 0, "allowed_aliases": ["fast-chat"],
+    })
+    customer = {"Authorization": f"Bearer {restricted.get('token', '')}"}
+    check("a key can be limited to one alias", status == 201, str(restricted)[:200])
+
+    status, _, body = public.call("/v1/models", headers=customer)
+    ids = sorted(m["id"] for m in body["data"])
+    check("a limited key only lists its own alias", status == 200 and ids == ["fast-chat"], str(ids))
+
+    status, _, body = public.call("/v1/chat/completions", "POST",
+                                  {"model": "fast-chat", "messages": [{"role": "user", "content": "hi"}]},
+                                  headers=customer)
+    check("a limited key can call its own alias", status == 200, str(body)[:200])
+
+    status, _, body = public.call("/v1/chat/completions", "POST",
+                                  {"model": "premium-chat", "messages": [{"role": "user", "content": "hi"}]},
+                                  headers=customer)
+    check("a limited key cannot call another alias",
+          status == 404 and body["error"]["code"] == "model_not_found", str(body))
+
+    # The refusal must look exactly like a model that never existed, or a
+    # customer can map the catalogue by watching which errors come back.
+    status, _, unknown = public.call("/v1/chat/completions", "POST",
+                                     {"model": "never-existed", "messages": []}, headers=customer)
+    same_shape = (status == 404 and unknown["error"]["code"] == body["error"]["code"]
+                  and unknown["error"]["type"] == body["error"]["type"])
+    check("a forbidden alias is indistinguishable from a missing one", same_shape,
+          str(unknown) + " vs " + str(body))
+
+    status, _, body = public.call("/v1/models", headers=auth)
+    ids_all = sorted(m["id"] for m in body["data"])
+    check("an unrestricted key still lists every published alias",
+          ids_all == ["fast-chat", "premium-chat"], str(ids_all))
+
     # ------------------------------------------------------------ observability
     print("\n• observability", flush=True)
     status, _, log = client.call("/api/admin/requests?since=30m&limit=50")
     check("the request log contains the calls just made", status == 200 and log["total"] >= 4,
           str(log.get("total")))
-    failover = next((r for r in log["requests"] if r["status"] == "ok" and not r["streamed"]), None)
+    failover = next((r for r in log["requests"]
+                     if r["status"] == "ok" and not r["streamed"] and r["fallback_count"] >= 1), None)
     check("the successful call recorded a fallback", failover is not None and failover["fallback_count"] >= 1,
           str(failover))
     if failover:

@@ -137,7 +137,7 @@ upstreams (healthy on 9091, always-500 on 9092, always-401 on 9093):
   [PASS] sign-out succeeds
   [PASS] the session no longer works
 
-36/36 checks passed
+44/44 checks passed
 end-to-end run OK
 ```
 
@@ -252,6 +252,6 @@ filled with sample data. Once one operator exists, the Audit page shows the real
 make test     # gateway + console unit tests
 make lint     # gofmt, go vet, go build, tsc
 make build    # production image
-make e2e      # the 36-check journey, mock upstreams only
+make e2e      # the 44-check journey, mock upstreams only
 make smoke    # Compose stack + readiness
 ```
