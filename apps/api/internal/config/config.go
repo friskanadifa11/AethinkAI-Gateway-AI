@@ -31,6 +31,12 @@ type Config struct {
 	// self-hosted gateway normally talks to an upstream on its own network, so
 	// this defaults on; the cloud metadata range is refused regardless.
 	AllowPrivateUpstreams bool
+	// CORSOrigins is a comma-separated allowlist for the public API. Empty
+	// means no CORS headers at all: the public API is for servers by default.
+	CORSOrigins string
+	// MetricsToken guards /metrics. Empty closes the endpoint entirely, so a
+	// tunnel cannot publish traffic counts by accident.
+	MetricsToken string
 }
 
 // Load resolves configuration and reports the first unusable value instead of
@@ -48,6 +54,8 @@ func Load() (*Config, error) {
 		LogLevel:       env("LOG_LEVEL", "info"),
 
 		AllowPrivateUpstreams: envBool("ALLOW_PRIVATE_UPSTREAMS", true),
+		CORSOrigins:           env("CORS_ORIGINS", ""),
+		MetricsToken:          env("METRICS_TOKEN", ""),
 	}
 
 	if cfg.DatabaseURL == "" {

@@ -79,6 +79,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 	if !ok {
 		w.Header().Set("Retry-After", "60")
+		s.met.ObserveLimit("rate")
 		openAIError(w, http.StatusTooManyRequests, "rate_limited",
 			"This key has reached its per-minute request limit.", "rate_limit_error")
 		return
@@ -86,6 +87,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	release, ok := s.lim.Acquire(r.Context(), s.st.RDB, key.ID, key.MaxConc)
 	if !ok {
 		w.Header().Set("Retry-After", "5")
+		s.met.ObserveLimit("concurrency")
 		openAIError(w, http.StatusTooManyRequests, "concurrency_limited",
 			"This key already has the maximum number of requests in flight.", "rate_limit_error")
 		return

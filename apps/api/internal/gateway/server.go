@@ -26,6 +26,7 @@ type Server struct {
 	up  *Upstream
 	lim *Limiter
 	brk *Breaker
+	met *Metrics
 	log *slog.Logger
 	mux *http.ServeMux
 }
@@ -38,6 +39,7 @@ func New(cfg *config.Config, st *store.Store, log *slog.Logger) *Server {
 		up:  NewUpstream(),
 		lim: NewLimiter(),
 		brk: NewBreaker(st.RDB),
+		met: NewMetrics(),
 		log: log,
 		mux: http.NewServeMux(),
 	}
@@ -51,8 +53,12 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /readyz", s.handleReady)
 
 	// --- public, OpenAI-compatible -----------------------------------------
-	s.mux.HandleFunc("POST /v1/chat/completions", s.handleChatCompletions)
-	s.mux.HandleFunc("GET /v1/models", s.handleModels)
+	s.mux.HandleFunc("POST /v1/chat/completions", s.cors(s.handleChatCompletions))
+	s.mux.HandleFunc("GET /v1/models", s.cors(s.handleModels))
+	s.mux.HandleFunc("OPTIONS /v1/", s.handlePreflight)
+
+	// --- observability -----------------------------------------------------
+	s.mux.HandleFunc("GET /metrics", s.handleMetrics)
 
 	// --- admin, unauthenticated --------------------------------------------
 	s.mux.HandleFunc("GET /api/admin/setup-state", s.handleSetupState)

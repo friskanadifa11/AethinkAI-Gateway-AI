@@ -134,4 +134,5 @@ an error rather than a silently ignored field.
 |---|---|---|
 | `GET` | `/healthz` | Liveness. Answers while the process runs. |
 | `GET` | `/readyz` | Readiness. `503` unless Postgres **and** Redis answer. |
+| `GET` | `/metrics` | Prometheus text exposition. Requires `METRICS_TOKEN` (Bearer header or `?token=`); answers `404` when no token is configured. |
 | `GET` | `/app/` | The console. Unknown paths under `/app/` fall back to `index.html`. |

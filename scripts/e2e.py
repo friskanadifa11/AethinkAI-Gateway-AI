@@ -35,6 +35,7 @@ BASE = f"http://127.0.0.1:{PORT}"
 DB_PASSWORD = "e2e-password"
 APP_SECRET = "e2e-secret-value-that-is-long-enough-to-pass"
 BOOTSTRAP_TOKEN = "e2e-bootstrap-token"
+METRICS_TOKEN = "e2e-metrics-token"
 ADMIN_USER, ADMIN_PASS = "operator", "correct-horse-battery"
 
 RESULTS: list[tuple[bool, str, str]] = []
@@ -137,6 +138,8 @@ def start_stack(rebuild: bool) -> None:
         "-e", "HTTP_ADDR=0.0.0.0:8080", "-e", "ALLOW_PUBLIC_BIND=true",
         "-e", f"APP_SECRET={APP_SECRET}", "-e", f"BOOTSTRAP_TOKEN={BOOTSTRAP_TOKEN}",
         "-e", "LOG_LEVEL=warn", "-e", "INSECURE_COOKIES=true",
+        "-e", "CORS_ORIGINS=https://console.example",
+        "-e", f"METRICS_TOKEN={METRICS_TOKEN}",
         "-e", "DATABASE_URL=postgres://aethink:" + DB_PASSWORD + "@" + PG + ":5432/aethink?sslmode=disable",
         "-e", f"REDIS_ADDR={REDIS}:6379",
     ]
@@ -429,6 +432,34 @@ def journey(client: Client) -> None:
     published_now = sorted(r["alias"] for r in catalogue["published"])
     check("an unrestricted key still lists every published alias",
           ids_all == published_now and "fast-chat" in published_now, str(ids_all))
+
+    # ------------------------------------------------------- cors and metrics
+    print("\n• cors and metrics", flush=True)
+    status, headers, _ = public.call("/v1/chat/completions", "OPTIONS",
+                                     headers={"Origin": "https://console.example",
+                                              "Access-Control-Request-Method": "POST"})
+    check("a listed origin passes the preflight",
+          status == 204 and headers.get("Access-Control-Allow-Origin") == "https://console.example",
+          str({k: v for k, v in headers.items() if k.lower().startswith("access-control")}))
+
+    status, headers, _ = public.call("/v1/chat/completions", "OPTIONS",
+                                     headers={"Origin": "https://evil.example"})
+    check("an unlisted origin is granted nothing",
+          status == 204 and "Access-Control-Allow-Origin" not in headers, str(headers))
+
+    status, headers, _ = public.call("/v1/models",
+                                     headers={**auth, "Origin": "https://console.example"})
+    check("a real answer carries the grant and exposes the trace header",
+          status == 200 and headers.get("Access-Control-Allow-Origin") == "https://console.example"
+          and "X-Aethink-Trace" in headers.get("Access-Control-Expose-Headers", ""), str(headers))
+
+    status, _, body = public.call("/metrics")
+    check("metrics are closed without the token", status == 401, str(body)[:120])
+    status, _, body = public.call("/metrics", headers={"Authorization": f"Bearer {METRICS_TOKEN}"})
+    text = body if isinstance(body, str) else json.dumps(body)
+    check("metrics expose real counts once authorised",
+          status == 200 and 'aethink_requests_total{alias="fast-chat",status="ok"}' in text
+          and 'aethink_limit_refusals_total{reason="rate"}' in text, text[:300])
 
     # ------------------------------------------------------------ observability
     print("\n• observability", flush=True)

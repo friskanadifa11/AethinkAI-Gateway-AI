@@ -141,6 +141,12 @@ upstreams (healthy on 9091, always-500 on 9092, always-401 on 9093):
   [PASS] a limited key cannot call another alias
   [PASS] a forbidden alias is indistinguishable from a missing one
   [PASS] an unrestricted key still lists every published alias
+• cors and metrics
+  [PASS] a listed origin passes the preflight
+  [PASS] an unlisted origin is granted nothing
+  [PASS] a real answer carries the grant and exposes the trace header
+  [PASS] metrics are closed without the token
+  [PASS] metrics expose real counts once authorised
 • observability
   [PASS] the request log contains the calls just made
   [PASS] the successful call recorded a fallback
@@ -156,8 +162,9 @@ upstreams (healthy on 9091, always-500 on 9092, always-401 on 9093):
   [PASS] sign-out succeeds
   [PASS] the session no longer works
 
-52/52 checks passed
+57/57 checks passed
 end-to-end run OK
+```
 ```
 
 The checks that carry the routing and tenancy claims:
@@ -174,6 +181,10 @@ The checks that carry the routing and tenancy claims:
 - A key issued for one alias sees only that alias in `/v1/models`, and calling
   another one answers `404 model_not_found` — indistinguishable from an alias
   that does not exist.
+- A listed CORS origin gets its grant on the preflight and on the real response,
+  with `X-Aethink-Trace` exposed; an unlisted one gets nothing.
+- `/metrics` refuses a bare request and returns per-alias counters once the
+  bearer token is supplied.
 
 ## 5. Compose stack
 

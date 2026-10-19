@@ -84,7 +84,7 @@ func (s *Server) dispatch(w http.ResponseWriter, r *http.Request, plan dispatchP
 
 			if ok, _ := ClassifyStatus(resp.StatusCode); ok {
 				usedTarget = &t
-				s.noteHealth(true, t.ProviderID)
+				s.noteHealth(true, t)
 				if plan.Stream {
 					ttft, tokensIn, tokensOut, streamErr := s.streamThrough(w, resp)
 					cancel()
@@ -138,7 +138,7 @@ func (s *Server) dispatch(w http.ResponseWriter, r *http.Request, plan dispatchP
 		}
 		if targetFailed {
 			fallbacks++
-			s.noteHealth(false, t.ProviderID)
+			s.noteHealth(false, t)
 		}
 	}
 
@@ -167,7 +167,7 @@ func (s *Server) dispatch(w http.ResponseWriter, r *http.Request, plan dispatchP
 
 // noteHealth records an attempt outcome off the request path: a caller that hung
 // up still leaves the provider's state accurate for the next one.
-func (s *Server) noteHealth(ok bool, providerID string) {
+func (s *Server) noteHealth(ok bool, t ResolvedTarget) {
 	if s.brk == nil {
 		return
 	}
@@ -175,10 +175,12 @@ func (s *Server) noteHealth(ok bool, providerID string) {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 		if ok {
-			s.brk.Succeed(ctx, providerID)
+			s.brk.Succeed(ctx, t.ProviderID)
 			return
 		}
-		s.brk.Fail(ctx, providerID)
+		if s.brk.Fail(ctx, t.ProviderID) {
+			s.met.ObserveBreakerOpen(t.ProviderName)
+		}
 	}()
 }
 
@@ -287,6 +289,7 @@ func (s *Server) streamThrough(w http.ResponseWriter, resp *http.Response) (ttft
 // finish writes the trace row on a detached context so a cancelled client still
 // leaves an auditable record.
 func (s *Server) finish(plan dispatchPlan, attempts []models.Attempt, status string, httpStatus, fallbacks, tokensIn, tokensOut int, ttft *int, errCode string, streamed bool, used ResolvedTarget) {
+	s.met.ObserveRequest(plan.Alias, status, millis(plan.Start), fallbacks)
 	keyID := plan.Key.ID
 	providerName, upstreamModel := "", ""
 	if used.ProviderID != "" {

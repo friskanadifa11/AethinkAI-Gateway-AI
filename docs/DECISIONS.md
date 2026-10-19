@@ -145,3 +145,32 @@ than a text box, because an unknown alias on a fail-closed allowlist produced a
 key that could reach nothing and reported nothing. Creation now rejects unknown
 aliases for the same reason.
 
+
+## D13 — CORS is off until asked for, and metrics are closed until a token exists
+
+**Decision.** No CORS headers are sent unless `CORS_ORIGINS` lists an origin.
+`/metrics` answers `404` unless `METRICS_TOKEN` is set, and `401` when the token
+does not match.
+
+**Why.** Both features are useful and both leak by default. A wildcard CORS
+policy on an API authenticated by bearer tokens lets any page a victim visits
+read their responses; the default has to be the closed one, and the operator who
+needs a browser client names the origin. Metrics are worse: this gateway is
+routinely published through a tunnel, so an open `/metrics` would publish alias
+names, request counts and error rates to anyone who guesses the path. Closing it
+when unconfigured means forgetting the token is safe rather than embarrassing. On
+the response side, `Vary: Origin` is always set, because a cache that serves one
+origin's grant to another is a CORS bypass with extra steps.
+
+## D14 — Metrics are per process
+
+**Decision.** Counters live in memory and are exported as-is; there is no
+aggregation across replicas.
+
+**Why.** Prometheus already aggregates: each scrape carries an instance label and
+the query layer sums. A shared counter in Redis would add a write to every
+request in order to reproduce something the monitoring system does better, and
+would lose the per-replica breakdown that tells you which pod is the slow one.
+The cost is honest and small: a restart resets the counters, and `rate()` over a
+long window can miss a reset — which is why the uptime gauge is exported next to
+them.
